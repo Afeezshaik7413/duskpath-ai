@@ -27,6 +27,7 @@ export default function Home() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("General Chat");
+  const[message,setMessage]=useState("");
   const [showMenu, setShowMenu] = useState(false);
   const chatEndRef =useRef<HTMLDivElement| null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -74,6 +75,18 @@ export default function Home() {
       onComplete?.();
     }
   }, 8);
+};
+
+const [goal, setGoal] = useState("");
+
+const generatePath = async (goal: string) => {
+  const res = await fetch("/api/learning-path", {
+    method: "POST",
+    body: JSON.stringify({ goal }),
+  });
+
+  const data = await res.json();
+  console.log(data.path);
 };
 
   useEffect(() => {
