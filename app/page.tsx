@@ -1,586 +1,334 @@
 "use client";
 
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import {useEffect,useRef} from "react";
+import Link from "next/link";
+import{motion} from "framer-motion";
+import {useEffect,useState} from "react";
 
-type Message = { role: "user" | "ai"; text: string };
-
-const isLowQuality = (text: string) => {
-  const low = ["hi", "hello", "hey", "ok", "hii"];
-  return low.includes(text.toLowerCase().trim());
-};
-
-const getSmartTitle = (text: string) => {
-  const lowQuality = ["hi", "hello", "hey", "ok", "hii"];
-
-  const clean = text.toLowerCase().trim();
-
-  if (lowQuality.includes(clean) || clean.length < 4) {
-    return "New Chat";
-  }
-
-  return text.split(" ").slice(0, 4).join(" ");
-};
 export default function Home() {
-  const [chats, setChats] = useState<any[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [mode, setMode] = useState("General Chat");
-  const[message,setMessage]=useState("");
-  const [showMenu, setShowMenu] = useState(false);
-  const chatEndRef =useRef<HTMLDivElement| null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const remainingTextRef = useRef("");
-  const fullTextRef = useRef("");
-  const typedTextRef = useRef("");
-  const [menu, setMenu] = useState<{
-  x: number;
-  y: number;
-  chatId: string;
-} | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const typingIntervalRef = useRef<number | null>(null);
-  const fetchControllerRef = useRef<AbortController | null>(null);
-  const currentChat = chats.find((c) => c.id === currentChatId);
 
-  const typeMessage = (
-  text: string,
-  callback: (val: string) => void,
-  onComplete?: () => void
-) => {
-  if (typingIntervalRef.current) {
-    clearInterval(typingIntervalRef.current);
-  }
+const [position, setPosition] = useState({ x: 0, y: 0 });
 
-  fullTextRef.current = text;
-  remainingTextRef.current = text;
-  typedTextRef.current = "";
+const [scrolled, setScrolled] = useState(false);
 
-  let index = 0;
-
-  typingIntervalRef.current = window.setInterval(() => {
-    const next = text.slice(0, index);
-
-    typedTextRef.current = next;
-    remainingTextRef.current = text.slice(index);
-
-    callback(next);
-    index++;
-
-    if (index > text.length) {
-      clearInterval(typingIntervalRef.current!);
-      typingIntervalRef.current = null;
-      remainingTextRef.current = "";
-      onComplete?.();
-    }
-  }, 8);
-};
-
-const [goal, setGoal] = useState("");
-
-const generatePath = async (goal: string) => {
-  const res = await fetch("/api/learning-path", {
-    method: "POST",
-    body: JSON.stringify({ goal }),
-  });
-
-  const data = await res.json();
-  console.log(data.path);
-};
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentChat?.messages]);
-
-  // 🔁 Load chat memory from localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const serialized = window.localStorage.getItem("duskpath-chats");
-      if (!serialized) return;
-      const parsed = JSON.parse(serialized);
-      if (parsed?.chats) {
-        setChats(parsed.chats);
-        setCurrentChatId(parsed.currentChatId ?? parsed.chats[0]?.id ?? null);
-      }
-    } catch (e) {
-      console.error("Failed to load chats from localStorage", e);
-    }
-  }, []);
-
-
-  // 🔒 Save chat memory to localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        "duskpath-chats",
-        JSON.stringify({ chats, currentChatId })
-      );
-    } catch (e) {
-      console.error("Failed to save chats to localStorage", e);
-    }
-  }, [chats, currentChatId]);
-
-  // ✅ CREATE NEW CHAT
-  const createNewChat = (selectedMode = mode) => {
-    const newChat = {
-      id: Date.now().toString(),
-      title: "New Chat",
-      mode: selectedMode,
-      messages: [],
-    };
-    setChats((prev) => [newChat, ...prev]);
-    setCurrentChatId(newChat.id);
-    setMode(selectedMode);
+useEffect(() => {
+  const handleScroll = () => {
+    setScrolled(window.scrollY > 50);
   };
 
-  // ✅ SEND MESSAGE
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  window.addEventListener("scroll", handleScroll);
+  return () => window.removeEventListener("scroll", handleScroll);
+}, []);
 
-    let chatId = currentChatId;
-
-    if (!chatId) {
-      const newChat = {
-        id: Date.now().toString(),
-        title: input.slice(0, 25),
-        mode,
-        messages: [],
-      };
-      setChats((prev) => [newChat, ...prev]);
-      setCurrentChatId(newChat.id);
-      chatId = newChat.id;
-    }
-
-    const userMessage = { role: "user", text: input };
-
-    setChats((prev) =>
-     prev.map((chat) =>
-       chat.id === chatId
-       ? {
-          ...chat,
-          messages: [...(chat.messages || []), userMessage],
-         }
-       : chat
-  )
-);
-setChats((prev) =>
-  prev.map((chat) =>
-    chat.id === currentChatId && chat.title === "New Chat"
-      ? { ...chat, title: input }
-      : chat
-  )
-);
-
-    const userInput = input;
-    setInput("");
-    setIsTyping(true);
-
-    try {
-      const conversationHistory = [
-        ...(currentChat?.messages || []),
-        { role: "user", text: userInput },
-      ];
-
-
-      fetchControllerRef.current = new AbortController();
-
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userInput,
-          history: conversationHistory,
-        }),
-        signal: fetchControllerRef.current.signal,
-      });
-
-      const data = await res.json();
-
-      const aiMessage = {
-        role: "ai",
-        text: "",
-      };
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, messages: [...chat.messages, aiMessage] }
-            : chat
-        )
-      );
-
-      typeMessage(
-        data.reply,
-        (typedText) => {
-          setChats((prev) =>
-            prev.map((chat) =>
-              chat.id === currentChatId
-                ? {
-                    ...chat,
-                    messages: chat.messages.map((msg: Message, index: number) =>
-                      index === chat.messages.length - 1
-                        ? { ...msg, text: typedText }
-                        : msg
-                    ),
-                  }
-                : chat
-            )
-          );
-        },
-        () => {
-          setIsTyping(false);
-          fetchControllerRef.current = null;
-        }
-      );
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        console.log("AI request aborted");
-      } else {
-        console.error(err);
-      }
-
-      if (typingIntervalRef.current) {
-        clearInterval(typingIntervalRef.current);
-        typingIntervalRef.current = null;
-      }
-
-      fetchControllerRef.current = null;
-      setIsTyping(false);
-    }
-  };
-
-  const stopConversation = () => {
-    if (fetchControllerRef.current) {
-      fetchControllerRef.current.abort();
-      fetchControllerRef.current = null;
-    }
-
-    if (typingIntervalRef.current) {
-      clearInterval(typingIntervalRef.current);
-      typingIntervalRef.current = null;
-    }
-
-    setIsTyping(false);
-  };
-  const continueConversation = () => {
-  const remaining = remainingTextRef.current;
-
-  if (!remaining) return;
-  setIsTyping(true);
-  let index = 0;
-
-  typingIntervalRef.current = window.setInterval(() => {
-    const next =
-      typedTextRef.current + remaining.slice(0, index);
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === currentChatId
-          ? {
-              ...chat,
-              messages: chat.messages.map((msg: Message, i: number) =>
-                i === chat.messages.length - 1
-                  ? { ...msg, text: next }
-                  : msg
-              ),
-            }
-          : chat
-      )
-    );
-
-    index++;
-
-    if (index > remaining.length) {
-      clearInterval(typingIntervalRef.current!);
-      typingIntervalRef.current = null;
-      remainingTextRef.current = "";
-      setIsTyping(false);
-    }
-  }, 8);
-};
   return (
-    <div className="flex h-screen bg-black text-white">
+
+   <div className= "pt-24">
   
-   
 
-      {/* 🔥 SIDEBAR */}
-{sidebarOpen && (
-  <div className="w-64 bg-[#0b0f19] p-4 flex flex-col justify-between border-r border-gray-800">
+{/* 🌐 NAVBAR */}
+<div
+  className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 
+  ${
+    scrolled
+      ? "bg-[#030712]/80 backdrop-blur-md border-b border-white/10"
+      : "bg-[#030712]/60 backdrop-blur-sm"
+  }`}
+>
+  <div className="max-w-7xl mx-auto flex justify-between items-center px-6 py-4">
+    
+    <h1 className="text-white font-semibold tracking-wide">
+      DUSK PATH AI
+    </h1>
 
-    <div>
-      {/* TOP */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="font-semibold">DUSK PATH AI</h1>
-        <button onClick={() => setSidebarOpen(false)}>✕</button>
-      </div>
-
-      {/* NEW CHAT */}
-      <button
-        onClick={() => createNewChat()}
-        className="w-full bg-[#1e293b] py-2 rounded-xl mb-6 hover:bg-[#334155]"
-      >
-        New Chat
-      </button>
-
-      {/* MODES */}
-      <div className="space-y-2 mb-4">
-        {["General Chat", "Model Papers", "Learning Path"].map((m) => (
-          <div
-            key={m}
-            onClick={() => createNewChat(m)} // ✅ NEW CHAT ON CLICK
-            className="p-2 hover:bg-[#1e293b] rounded cursor-pointer"
-          >
-            {m}
-          </div>
-        ))}
-      </div>
-
-      {/* DIVIDER */}
-      <div className="border-t border-gray-700 my-4"></div>
-
-      {/* RECENT CHATS */}
-      <p className="text-xs text-gray-500 mb-2">Recent Chats</p>
-
-      <div className="space-y-1">
-        {chats.map((chat) => (
-          <div
-            key={chat.id}
-            onClick={() => setCurrentChatId(chat.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-
-              setMenu({
-                x: e.clientX,
-                y: e.clientY,
-                chatId: chat.id,
-              });
-            }}
-            className="p-2 text-xs bg-[#1e293b] rounded cursor-pointer hover:bg-[#334155]"
-          >
-            {chat.title}
-          </div>
-        ))}
-      </div>
+    <div className="text-purple-400 cursor-pointer">
+      Shaik Afeez ▾
     </div>
 
-    {/* BOTTOM */}
-    <div className="space-y-2">
-      <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-[#1e293b]">
-        👤 Profile
-      </button>
-      <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-[#1e293b]">
-        ⚙️ Settings
-      </button>
-    </div>
   </div>
-)}
-
-      {/* 🔥 MAIN */}
-      <div className="flex-1 flex flex-col">
-        
-        {/* 🔐 LOGIN SECTION */}
-
-       <div className="p-4 flex justify-end gap-3">
-       <div className="text-sm">
-           Welcome to DuskPath AI
-       </div>
-       </div>
-
-        {!sidebarOpen && (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="absolute top-4 left-4"
-          >
-            ☰
-          </button>
-        )}
-
-        {/* 🔥 WELCOME */}
-        {!currentChat && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <h1 className="text-5xl font-bold">Welcome to</h1>
-            <h1 className="text-6xl font-extrabold mt-2">
-              DUSK PATH AI
-            </h1>
-            <p className="text-gray-400 mt-4">
-              Your Personal AI Study assistant
-            </p>
-          </div>
-        )}
-
-        {/* 🔥 CHAT */}
-        {currentChat && (
-          <div className="flex-1 overflow-y-auto px-4 py-6">
-            <div className="w-full max-w-2xl mx-auto space-y-6">
-
-              {currentChat.messages.map((msg: Message, i: number) => (
-
-                <div key={i}>
-
-                  {/* USER */}
-                  {msg.role === "user" && (
-                    <div className="flex justify-end">
-                      <div className="bg-blue-600 px-4 py-3 rounded-2xl rounded-br-none max-w-[70%] text-sm">
-                        {msg.text}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI */}
-                  {msg.role === "ai" && (
-                    <div className="text-gray-300 text-sm leading-relaxed max-w-[85%]">
-                      <ReactMarkdown
-                         components={{
-                                    h1: ({ children }) => (
-                                    <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>
-                                    ),
-                                    h2: ({ children }) => (
-                                    <h2 className="text-lg font-semibold mt-3 mb-2">{children}</h2>
-                                    ),
-                                      h3: ({ children }) => (
-                                       <h3 className="text-md font-medium mt-2 mb-1">{children}</h3>
-                                       ),
-                                         p: ({ children }) => (
-                                        <p className="text-sm leading-relaxed mb-2">{children}</p>
-                                         ),
-                                         li: ({ children }) => (
-                                             <li className="ml-4 list-disc text-sm mb-1">{children}</li>
-                                        ),
-                                             }}
-                                           >
-                                      {msg.text.replace(/\*\*/g, "")}
-                                  </ReactMarkdown>
-                    </div>
-                  )}
-
-                </div>
-
-              ))}
-
-              {isTyping && (
-                <div className="flex items-start">
-                  <div className="text-gray-400 text-sm leading-relaxed max-w-[85%] animate-pulse">
-                    Typing...
-                  </div>
-                </div>
-              )}
-
-              <div ref={chatEndRef}></div>
-
-            </div>
-          </div>
-        )}
-
-        {/* 🔥 INPUT */}
-        <div className="w-full max-w-2xl mx-auto p-4 relative">
-
-          <div className="flex items-center bg-[#0f172a] border border-gray-700 rounded-xl px-3 py-2">
-
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="text-lg mr-2 text-gray-400"
-            >
-              +
-            </button>
-
-            <div className="relative flex-1">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask DUSK AI anything..."
-                className="w-full pr-12 bg-transparent outline-none text-sm"
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              />
-
-              <button
-                onClick={() => {
-  if (isTyping) {
-    stopConversation();
-  } else if (remainingTextRef.current) {
-    continueConversation(); // 🔥 THIS WAS MISSING
-  } else {
-    handleSend();
-  }
-}}
-                className={`absolute right-1 top-1/2 -translate-y-1/2 px-2 py-1 rounded-full text-sm ${
-                  isTyping ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
-                }`}
-                aria-label={isTyping ? "Stop response" : "Send message"}
-              >
-                {isTyping ? "⏹" : remainingTextRef.current ? "▶" : "↑"}
-              </button>
-            </div>
-          </div>
-
-          {/* MODE MENU */}
-          {showMenu && (
-            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-[#0f172a] border border-gray-700 rounded-xl p-2 flex gap-2">
-              {["General Chat", "Model Papers", "Learning Path"].map((m) => (
-                <div
-                  key={m}
-                  onClick={() => {
-                    setMode(m);
-                    createNewChat(m);
-                    setShowMenu(false);
-                  }}
-                  className="px-4 py-2 text-sm bg-[#1e293b] rounded cursor-pointer"
-                >
-                  {m}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+</div>
 
 
-          {/* 🔥 RIGHT CLICK MENU */}
-         {menu && (
-             <div
-               className="fixed bg-black text-white p-3 rounded-lg shadow-lg z-[9999]"
-                 style={{
-                  top: menu.y,
-                 left: menu.x,
-                 }}
-                >
-               <div
-             onClick={() => {
-           const newName = prompt("Rename chat:");
-                if (!newName) return;
+    {/* Hero Section */}
+   <section className="relatiive top-0 h-screen flex flex-col items-center justify-center overflow-hidden bg-[#030712] text-white">
 
-               setChats((prev) =>
-               prev.map((c) =>
-               c.id === menu.chatId ? { ...c, title: newName } : c
-               )
-             );
+      {/* 🌌 BACKGROUND GLOW */}
+      <div className="absolute top-[20%] left-[20%] w-[300px] h-[300px] bg-purple-600/30 rounded-full blur-[120px] -z-10 animate-pulse" />
+      <div className="absolute top-[30%] right-[30%] w-[300px] h-[300px] bg-cyan-400/20 rounded-full blur-[120px] -z-10 animate-pulse" />
 
-              setMenu(null);
-               }}
-                className="px-2 py-1 hover:bg-gray-700 cursor-pointer"
-             >
-          Rename
+      {/* 🧠 AI ORB */}
+       <div className="absolute top-[22%] w-[350px] h-[350px] rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-400 blur-3xl opacity-50 animate-pulse" />
+       <div className="absolute top-[25%] w-[160px] h-[160px] rounded-full bg-[#030712] border border-white/10 flex items-center justify-center backdrop-blur-md">
+        <span className="text-xl font-semibold text-white/80">AI</span>
+      </div>
+
+      {/* 🚀 CONTENT */}
+      <div className="text-center w-full max-w-4xl space-y-8 z-10 px-6 mt-40">
+
+        {/* 🔵 BADGE (CENTER FIXED) */}
+          <div className="absolute top-[12%] left-1/2 transform -translate-x-1/2 z-20">
+           <div className="inline-flex items-center gap-3 px-4 py-2 border border-white/10 rounded-full bg-white/5 backdrop-blur-sm text-sm text-gray-300">
+         <span className="relative flex h-3 w-3">
+         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+         </span>
+             Built for the Indian Student
+         </div>
          </div>
 
-    <div
-      onClick={() => {
-        setChats((prev) =>
-          prev.filter((c) => c.id !== menu.chatId)
-        );
+        {/* 🧠 HEADING */}
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-tight">
+          Your Personal{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
+            AI Mentor
+          </span>
+        </h1>
 
-        setMenu(null);
-      }}
-      className="px-2 py-1 hover:bg-red-500 cursor-pointer"
-    >
-      Delete
-    </div>
+        {/* ✍️ SUBTEXT */}
+        <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+          Unlock your potential with tailored learning paths, real-time syllabus guidance, and proactive weakness mapping.
+        </p>
+
+        {/* 🚀 BUTTON */}
+        <Link href="/chat">
+          <button className="relative group overflow-hidden px-10 py-5 bg-white text-black font-bold rounded-xl shadow-[0_0_25px_rgba(255,255,255,0.3)] hover:scale-105 transition-transform duration-300">
+            
+            {/* ✨ SHIMMER */}
+            <span className="absolute inset-0 block animate-shimmer h-full w-[400%] bg-gradient-to-r from-transparent via-white/40 to-transparent -skew-x-[30deg]"></span>
+
+            <span className="relative z-10 text-lg">
+              Start Learning →
+            </span>
+          </button>
+        </Link>
+
+      </div>
+    </section>
+
+      {/* 🚀 PREMIUM 3 CARDS */}
+<section className="relative py-32 px-6 bg-[#030712] overflow-hidden">
+
+  {/* 🌌 Background Glow */}
+  <div className="absolute inset-0 flex justify-center">
+    <div className="w-[500px] h-[250px] bg-gradient-to-r from-purple-500/20 to-cyan-400/20 blur-[120px] rounded-full"></div>
   </div>
-)}
+
+  {/* 🧠 Heading */}
+  <h2 className="text-center text-4xl md:text-5xl font-bold text-white mb-20 relative z-10">
+    Your AI Learning Ecosystem
+  </h2>
+
+  {/* 🔥 CARDS */}
+  <div className="relative z-10 flex flex-col md:flex-row items-center justify-center gap-8">
+
+    {/* 💬 GENERAL CHAT */}
+    <div className="card w-[280px] md:w-[300px]">
+      <div className="icon">💬</div>
+      <h3>General Chat</h3>
+      <p>
+        Ask any doubt or question. Your AI assistant is always ready to help you learn better.
+      </p>
+    </div>
+
+    {/* 🧠 LEARNING PATH (MAIN CARD) */}
+    <div className="card active scale-110 w-[300px] md:w-[340px]">
+      <div className="icon">🧠</div>
+      <h3>Learning Path</h3>
+      <p>
+        Get a complete roadmap and AI mentorship to achieve your dream career step-by-step.
+      </p>
+    </div>
+
+    {/* 📝 TEST CENTER */}
+    <div className="card w-[280px] md:w-[300px]">
+      <div className="icon">📝</div>
+      <h3>Test Center</h3>
+      <p>
+        Practice mock tests, solve model papers, and prepare with real exam-level questions.
+      </p>
+    </div>
+
+  </div>
+
+  {/* ✨ Floating particles */}
+  <div className="absolute inset-0 pointer-events-none">
+    <div className="absolute top-20 left-20 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+    <div className="absolute top-40 right-20 w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+    <div className="absolute bottom-20 left-1/2 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+  </div>
+
+</section>
+
+       {/* 🚀 HOW IT WORKS */}
+<section className="relative py-32 px-6 bg-[#020617] border-t border-white/10">
+
+  {/* 🧠 Heading */}
+  <h2 className="text-center text-4xl md:text-5xl font-bold text-white mb-20">
+    How Dusk Path AI Works
+  </h2>
+
+  {/* 🔥 STEPS */}
+  <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12">
+
+    {/* STEP 1 */}
+      <motion.div
+       initial={{ opacity: 0, y: 50 }}
+       whileInView={{ opacity: 1, y: 0 }}
+       transition={{ duration: 0.6 }}
+      className="flex flex-col items-center text-center group"
+>
+      <div className="text-6xl font-bold text-white/20 mb-4 group-hover:text-purple-400 transition">
+        1
+        <div className="absolute w-24 h-24 bg-purple-500/20 blur-[60px] rounded-full opacity-0 group-hover:opacity-100 transition"></div>
+      </div>
+      <h3 className="text-xl text-white font-semibold mb-2">
+        Choose Your Goal
+      </h3>
+      <p className="text-gray-400 max-w-xs">
+        Select your class, exam, or career path you want to achieve.
+      </p>
+    </motion.div>
+
+    {/* ARROW */}
+    <div className="hidden md:flex items-center">
+    <div className="w-16 h-[2px] bg-gradient-to-r from-purple-500 to-cyan-400 animate-pulse"></div>
+    </div>
+
+    {/* STEP 2 */}
+    <motion.div
+  initial={{ opacity: 0, y: 50 }}
+  whileInView={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.6 }}
+  className="flex flex-col items-center text-center group"
+>
+      <div className="text-6xl font-bold text-white/20 mb-4 group-hover:text-cyan-400 transition">
+        2
+        <div className="absolute w-24 h-24 bg-purple-500/20 blur-[60px] rounded-full opacity-0 group-hover:opacity-100 transition"></div>
+      </div>
+      <h3 className="text-xl text-white font-semibold mb-2">
+        Learn & Ask
+      </h3>
+      <p className="text-gray-400 max-w-xs">
+        Use AI chat or follow your learning path to understand concepts deeply.
+      </p>
+    </motion.div>
+
+    {/* ARROW */}
+    <div className="hidden md:flex items-center">
+    <div className="w-16 h-[2px] bg-gradient-to-r from-purple-500 to-cyan-400 animate-pulse"></div>
+    </div>
+
+    {/* STEP 3 */}
+    <motion.div
+      initial={{ opacity: 0, y: 50 }}
+      whileInView={{ opacity: 1, y: 0 }}
+     transition={{ duration: 0.6 }}
+     className="flex flex-col items-center text-center group"
+>
+      <div className="text-6xl font-bold text-white/20 mb-4 group-hover:text-purple-400 transition">
+        3
+        <div className="absolute w-24 h-24 bg-purple-500/20 blur-[60px] rounded-full opacity-0 group-hover:opacity-100 transition"></div>
+      </div>
+      <h3 className="text-xl text-white font-semibold mb-2">
+        Test & Improve
+      </h3>
+      <p className="text-gray-400 max-w-xs">
+        Practice mock tests, track progress, and improve continuously.
+      </p>
+
+  </motion.div>
+  </div>
+  {/* 🌌 Glow */}
+  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[400px] h-[200px] bg-purple-500/20 blur-[120px] rounded-full"></div>
+
+</section>
+
+
+{/* 💰 PRICING SECTION */}
+<section className="relative py-28 px-6 bg-[#030712] border-t border-white/10">
+
+  <h2 className="text-center text-4xl md:text-6xl font-bold text-white mb-20">
+    Choose Your{" "}
+    <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
+      Learning Plan
+    </span>
+  </h2>
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-6xl mx-auto">
+
+    {/* 🟢 STARTER */}
+    <div className="p-8 rounded-2xl border border-white/10 bg-[#0B1220] backdrop-blur-xl text-center hover:scale-105 transition">
+
+      <h3 className="text-2xl font-bold text-white mb-2">Starter</h3>
+      <p className="text-gray-300 text-sm mb-4">Explore the basics</p>
+
+      <p className="text-5xl font-extrabold mb-6 text-white">
+        ₹0<span className="text-lg text-gray-300">/month</span>
+      </p>
+
+      <ul className="text-gray-400 space-y-3 mb-8 text-sm">
+        <li>✔ Limited Chat Access</li>
+        <li>✔ 1 Mock Test / week</li>
+        <li>✔ Basic Learning Path</li>
+      </ul>
+
+      <button className="w-full py-3 rounded-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 backdrop-blur-md transition">
+        Start Free
+      </button>
+    </div>
+
+    {/* 🔥 PRO STUDENT */}
+    <div className="relative p-8 rounded-2xl border border-purple-500/40 bg-gradient-to-b from-purple-500/10 to-cyan-500/10 backdrop-blur-xl text-center scale-105 shadow-[0_0_40px_rgba(168,85,247,0.3)]">
+
+      {/* Badge */}
+      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-500 to-cyan-500 text-white text-xs px-4 py-1 rounded-full">
+        MOST POPULAR
+      </div>
+
+      <h3 className="text-2xl font-bold text-white mb-2">Pro Student</h3>
+      <p className="text-gray-300 text-sm mb-4">Unlock your full potential</p>
+
+      <p className="text-5xl font-extrabold mb-6 text-white">
+        ₹199<span className="text-lg text-gray-300">/month</span>
+      </p>
+
+      <ul className="text-gray-200 space-y-3 mb-8 text-sm">
+        <li>✔ Unlimited Chat</li>
+        <li>✔ Full AI Learning Path</li>
+        <li>✔ Unlimited Mock Tests</li>
+        <li>✔ Weak Area Tracking</li>
+        <li>✔ Smart AI Suggestions</li>
+      </ul>
+
+      <button className="w-full py-3 rounded-lg bg-white text-black font-semibold hover:scale-105 transition">
+        Get Pro 🚀
+      </button>
+    </div>
+
+    {/* 🧠 TOPPER AI */}
+    <div className="p-8 rounded-2xl border border-white/10 bg-[#0B1220] backdrop-blur-xl text-center hover:scale-105 transition">
+
+      <h3 className="text-2xl font-bold text-white mb-2">Topper AI</h3>
+      <p className="text-gray-300 text-sm mb-4">Designed for rank achievers</p>
+
+      <p className="text-5xl font-extrabold mb-6 text-white">
+        ₹399<span className="text-lg text-gray-300">/month</span>
+      </p>
+
+      <ul className="text-gray-200 space-y-3 mb-8 text-sm">
+        <li>✔ Everything in Pro</li>
+        <li>✔ AI Study Planner</li>
+        <li>✔ Daily Schedules</li>
+        <li>✔ Advanced Analytics</li>
+        <li>✔ Exam Strategy</li>
+      </ul>
+
+      <button className="w-full py-3 rounded-lgbg-white/10 text-white border border-white/20 hover:bg-white/20 backdrop-blur-md transition">
+        Upgrade 🚀
+      </button>
+    </div>
+  
+  </div>
+</section>
 
 </div>
-</div>
-  )
+  );
 }

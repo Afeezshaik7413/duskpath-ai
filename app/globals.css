@@ -31,3 +31,66 @@ body {
 *::-webkit-scrollbar {
   display: none;                /* Chrome, Safari */
 }
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+/* 🧊 Glass Card */
+.card {
+  position: relative;
+  padding: 24px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  transition: all 0.4s ease;
+  text-align: left;
+}
+
+/* ✨ Hover */
+.card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 0 50px rgba(168, 85, 247, 0.4);
+}
+
+/* 🔥 Center Highlight */
+.card.active {
+  border: 1px solid rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 70px rgba(168, 85, 247, 0.6);
+}
+
+/* 🎯 Icon */
+.card .icon {
+  font-size: 34px;
+  margin-bottom: 14px;
+  filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.6));
+}
+
+/* 🧠 Title */
+.card h3 {
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* 📝 Text */
+.card p {
+  color: #9ca3af;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #030712;
+}

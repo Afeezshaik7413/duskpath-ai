@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const { message, history } = await req.json();
-
     // 🔥 SIMPLE SYSTEM PROMPT (you can expand later)
     // 🎯 SYSTEM PROMPT (DUSKPATH AI)
     const systemPrompt = `You are DUSK AI, an intelligent personal mentor and study guide. You help students of ALL ages and levels — from school students to college students to working professionals. You answer questions on any subject, any topic, any level.
@@ -115,7 +114,7 @@ Then wait for student question`;
           contents: [
             // ✅ SYSTEM PROMPT
             {
-              role: "user",
+              role: "model",
               parts: [{ text: systemPrompt }],
             },
 
@@ -143,13 +142,12 @@ Then wait for student question`;
     const reply =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       data?.error?.message ||
-      "No response from AI";
+      "I couldn't generate a response right now please try again later.";
 
     return NextResponse.json({ reply });
 
   } catch (error: any) {
     console.error("API ERROR:", error);
-
     return NextResponse.json(
       { reply: "Server error: " + error.message },
       { status: 500 }
